@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard Académico | Planeaciones</title>
+    <title>Dashboard Académico | Datos GitHub</title>
     <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -13,7 +13,7 @@
         .card { background: white; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); padding: 1.5rem; border: 1px solid #e2e8f0; }
         .filter-select { width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 0.5rem; font-size: 0.8rem; background: white; transition: all 0.2s; }
         .filter-select:hover { border-color: #3b82f6; }
-        #loader { display: none; background: rgba(255,255,255,0.9); backdrop-filter: blur(4px); z-index: 1000; }
+        #loader { display: flex; background: rgba(255,255,255,0.9); backdrop-filter: blur(4px); z-index: 1000; }
         #loader-progress { width: 300px; height: 6px; background: #e2e8f0; border-radius: 3px; overflow: hidden; margin-top: 1rem; }
         #loader-progress-bar { height: 100%; background: #3b82f6; width: 0%; transition: width 0.3s; }
         .table-container { overflow-x: auto; max-height: 400px; border: 1px solid #e2e8f0; border-radius: 8px; }
@@ -36,7 +36,7 @@
         <div id="loader-progress">
             <div id="loader-progress-bar"></div>
         </div>
-        <p id="loader-subtext" class="text-slate-500 text-xs mt-2">Sincronizando datos...</p>
+        <p id="loader-subtext" class="text-slate-500 text-xs mt-2">Iniciando descarga de datos...</p>
     </div>
 
     <nav class="bg-slate-900 text-white p-4 sticky top-0 z-50 shadow-lg">
@@ -45,15 +45,12 @@
                 <div class="bg-blue-600 p-2 rounded-lg text-xl">🏛️</div>
                 <div>
                     <h1 class="font-bold text-lg leading-none">Sistema Histórico de Planeaciones</h1>
-                    <p id="data-status" class="text-blue-400 text-xs mt-1">Conectando a repositorio remoto...</p>
+                    <p id="data-status" class="text-blue-400 text-xs mt-1">Sincronizando datos...</p>
                 </div>
             </div>
             <div class="flex items-center gap-3">
                 <button onclick="exportToExcel()" class="export-btn" id="exportBtn" style="display: none;">
                     ⬇️ Exportar a Excel
-                </button>
-                <button onclick="fetchGitHubData()" class="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-md font-bold text-sm transition shadow-lg flex items-center gap-2">
-                    🔄 Actualizar Datos
                 </button>
             </div>
         </div>
@@ -125,7 +122,9 @@
                                 <th>Semestre Cursado</th>
                             </tr>
                         </thead>
-                        <tbody id="table-body"></tbody>
+                        <tbody id="table-body">
+                            <tr><td colspan="12" class="text-center text-slate-400 py-4">Sincronizando con repositorio...</td></tr>
+                        </tbody>
                     </table>
                 </div>
                 <div class="pagination" id="pagination">
@@ -138,7 +137,6 @@
     </div>
 
     <script>
-        const DATA_URL = 'https://raw.githubusercontent.com/ezamarripa-creator/CapacitacionesCOBAED/main/datos.json';
         let db = [];
         let filtered = [];
         let filterState = {};
@@ -146,22 +144,29 @@
         const rowsPerPage = 100;
         let totalPages = 1;
 
-        window.onload = fetchGitHubData;
+        // Configuración de GitHub - CAMBIA ESTOS VALORES
+        const GITHUB_CONFIG = {
+            usuario: 'TU_USUARIO', // Reemplaza con tu usuario
+            repo: 'TU_REPOSITORIO', // Reemplaza con el nombre de tu repo
+            archivo: 'datos.json'
+        };
 
-        async function fetchGitHubData() {
-            const loader = document.getElementById('loader');
-            loader.style.display = 'flex';
-            document.getElementById('loader-progress-bar').style.width = '20%';
-
+        window.onload = async function() {
+            const url = `https://raw.githubusercontent.com/${GITHUB_CONFIG.usuario}/${GITHUB_CONFIG.repo}/main/${GITHUB_CONFIG.archivo}`;
+            
             try {
-                const response = await fetch(`${DATA_URL}?t=${new Date().getTime()}`);
-                if (!response.ok) throw new Error("No se pudo obtener el archivo desde GitHub.");
+                document.getElementById('loader-progress-bar').style.width = '20%';
+                const response = await fetch(url);
+                
+                if (!response.ok) throw new Error('No se pudo obtener el archivo de GitHub');
+                
+                document.getElementById('loader-progress-bar').style.width = '50%';
+                document.getElementById('loader-subtext').innerText = 'Parseando datos...';
                 
                 const rawData = await response.json();
-                document.getElementById('loader-progress-bar').style.width = '60%';
-                document.getElementById('loader-subtext').innerText = 'Procesando registros...';
-
-                // Normalización de datos (igual que en tu lógica anterior)
+                
+                document.getElementById('loader-progress-bar').style.width = '80%';
+                
                 db = rawData.map(d => {
                     let o = {};
                     for(let k in d) {
@@ -171,19 +176,22 @@
                     return o;
                 });
 
-                document.getElementById('loader-progress-bar').style.width = '100%';
                 init();
                 
-                setTimeout(() => loader.style.display = 'none', 500);
+                document.getElementById('loader-progress-bar').style.width = '100%';
+                setTimeout(() => {
+                    document.getElementById('loader').style.display = 'none';
+                }, 500);
+
             } catch (err) {
-                alert("Error al cargar datos: " + err.message);
-                loader.style.display = 'none';
-                document.getElementById('data-status').innerText = "❌ Error de conexión";
+                document.getElementById('loader-text').innerText = 'Error de conexión';
+                document.getElementById('loader-subtext').innerHTML = `<span class="text-red-500">${err.message}</span><br>Verifique la URL del repositorio.`;
+                console.error(err);
             }
-        }
+        };
 
         function init() {
-            document.getElementById('data-status').innerHTML = `✅ GitHub Sincronizado: ${db.length.toLocaleString()} registros.`;
+            document.getElementById('data-status').innerHTML = `✅ Datos Sincronizados: ${db.length.toLocaleString()} registros.`;
             filtered = [...db];
             
             const keys = ['Estatus', 'plantel', 'semestre', 'turno', 'parcial', 'Area', 'Semestre Cursado', 'Tipo'];
@@ -209,14 +217,12 @@
             document.getElementById('exportBtn').style.display = 'inline-flex';
         }
 
+        // --- LÓGICA DE FILTRADO Y TABLA (Igual a la original) ---
+
         function runFilter(key, val) {
             if(val === "ALL") delete filterState[key];
             else filterState[key] = val;
-            
-            filtered = db.filter(d => {
-                return Object.keys(filterState).every(k => String(d[k] || '') === filterState[k]);
-            });
-            
+            filtered = db.filter(d => Object.keys(filterState).every(k => String(d[k] || '') === filterState[k]));
             currentPage = 1;
             render();
             updateTable();
@@ -233,7 +239,7 @@
 
         function render() {
             if (!filtered.length) {
-                ['k-total', 'k-docs', 'k-plant', 'k-mat'].forEach(id => document.getElementById(id).innerText = '0');
+                ['k-total','k-docs','k-plant','k-mat'].forEach(id => document.getElementById(id).innerText = '0');
                 return;
             }
 
@@ -245,43 +251,41 @@
             const config = { responsive: true, displayModeBar: false };
             const layoutBase = { height: 350, font: {family: 'Inter', size: 10}, margin: {t:40, b:60, l:50, r:10} };
 
-            // Gráficas
+            // Gráficos básicos
             const timeMap = countBy(filtered, 'fec_elaboracion');
-            Plotly.newPlot('chart-time', [{x: Object.keys(timeMap), y: Object.values(timeMap), type: 'scatter', fill: 'tozeroy'}], {...layoutBase, title: '<b>ENTREGAS POR FECHA</b>'}, config);
+            Plotly.newPlot('chart-time', [{x: Object.keys(timeMap), y: Object.values(timeMap), type: 'scatter', fill: 'tozeroy'}], {...layoutBase, title: 'EVOLUCIÓN TEMPORAL'}, config);
 
             const areaMap = countBy(filtered, 'Area');
-            Plotly.newPlot('chart-area', [{labels: Object.keys(areaMap), values: Object.values(areaMap), type: 'pie', hole: 0.5}], {...layoutBase, title: '<b>ÁREAS</b>'}, config);
+            Plotly.newPlot('chart-area', [{labels: Object.keys(areaMap), values: Object.values(areaMap), type: 'pie', hole: 0.4}], {...layoutBase, title: 'ÁREAS ACADÉMICAS'}, config);
 
             const semCMap = countBy(filtered, 'Semestre Cursado');
-            Plotly.newPlot('chart-semestre-cursado', [{x: Object.keys(semCMap), y: Object.values(semCMap), type: 'bar', marker: {color: '#8b5cf6'}}], {...layoutBase, title: '<b>POR SEMESTRE CURSADO</b>'}, config);
+            Plotly.newPlot('chart-semestre-cursado', [{x: Object.keys(semCMap), y: Object.values(semCMap), type: 'bar', marker: {color: '#8b5cf6'}}], {...layoutBase, title: 'SEMESTRE CURSADO'}, config);
 
             const estMap = countBy(filtered, 'Estatus');
-            Plotly.newPlot('chart-estatus', [{x: Object.keys(estMap), y: Object.values(estMap), type: 'bar', marker: {color: '#10b981'}}], {...layoutBase, title: '<b>ESTATUS</b>'}, config);
+            Plotly.newPlot('chart-estatus', [{x: Object.keys(estMap), y: Object.values(estMap), type: 'bar', marker: {color: '#10b981'}}], {...layoutBase, title: 'ESTATUS'}, config);
 
             const tipoMap = countBy(filtered, 'Tipo');
-            Plotly.newPlot('chart-tipo', [{labels: Object.keys(tipoMap), values: Object.values(tipoMap), type: 'pie'}], {...layoutBase, title: '<b>TIPO</b>'}, config);
+            Plotly.newPlot('chart-tipo', [{labels: Object.keys(tipoMap), values: Object.values(tipoMap), type: 'pie'}], {...layoutBase, title: 'POR TIPO'}, config);
 
             const plantTotalMap = countBy(filtered, 'plantel');
-            Plotly.newPlot('chart-planteles-total', [{x: Object.keys(plantTotalMap), y: Object.values(plantTotalMap), type: 'bar'}], {...layoutBase, title: '<b>POR PLANTEL</b>'}, config);
+            Plotly.newPlot('chart-planteles-total', [{x: Object.keys(plantTotalMap), y: Object.values(plantTotalMap), type: 'bar'}], {...layoutBase, title: 'REGISTROS POR PLANTEL'}, config);
 
             const docMap = topN(countBy(filtered, 'docente'), 10);
-            Plotly.newPlot('chart-top-docentes', [{x: Object.values(docMap), y: Object.keys(docMap), type: 'bar', orientation: 'h'}], {...layoutBase, title: '<b>TOP 10 DOCENTES</b>', margin: {t:40, b:40, l:180, r:10}}, config);
+            Plotly.newPlot('chart-top-docentes', [{x: Object.values(docMap), y: Object.keys(docMap), type: 'bar', orientation: 'h'}], {...layoutBase, title: 'TOP 10 DOCENTES', margin: {l:150}}, config);
         }
 
         function updateTable() {
             const tbody = document.getElementById('table-body');
-            const countSpan = document.getElementById('table-count');
-            
             if (!filtered.length) {
-                tbody.innerHTML = '<tr><td colspan="12" class="text-center py-4">Sin datos</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="12" class="text-center py-4">No hay datos</td></tr>';
                 return;
             }
 
-            countSpan.innerText = `${filtered.length.toLocaleString()} registros`;
             totalPages = Math.ceil(filtered.length / rowsPerPage);
             const start = (currentPage - 1) * rowsPerPage;
             const pageData = filtered.slice(start, start + rowsPerPage);
             
+            document.getElementById('table-count').innerText = `${filtered.length.toLocaleString()} registros`;
             document.getElementById('pageInfo').innerText = `Página ${currentPage} de ${totalPages}`;
             document.getElementById('prevPageBtn').disabled = currentPage === 1;
             document.getElementById('nextPageBtn').disabled = currentPage === totalPages;
@@ -291,8 +295,8 @@
                     <td>${d.idPlantel || ''}</td>
                     <td>${d.plantel || ''}</td>
                     <td>${d.matricula || ''}</td>
-                    <td>${(d.docente || '').substring(0, 25)}</td>
-                    <td>${(d.materia || '').substring(0, 25)}</td>
+                    <td>${(d.docente || '').substring(0,25)}</td>
+                    <td>${(d.materia || '').substring(0,25)}</td>
                     <td>${d.Estatus || ''}</td>
                     <td>${d.semestre || ''}</td>
                     <td>${d.turno || ''}</td>
@@ -304,15 +308,8 @@
             `).join('');
         }
 
-        function prevPage() { if (currentPage > 1) { currentPage--; updateTable(); } }
-        function nextPage() { if (currentPage < totalPages) { currentPage++; updateTable(); } }
-
-        function exportToExcel() {
-            const ws = XLSX.utils.json_to_sheet(filtered);
-            const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws, "Filtrados");
-            XLSX.writeFile(wb, `planeaciones_${new Date().toISOString().slice(0,10)}.xlsx`);
-        }
+        function prevPage() { if(currentPage > 1) { currentPage--; updateTable(); } }
+        function nextPage() { if(currentPage < totalPages) { currentPage++; updateTable(); } }
 
         function countBy(arr, key) {
             return arr.reduce((acc, obj) => {
@@ -324,6 +321,13 @@
 
         function topN(obj, n) {
             return Object.entries(obj).sort((a,b) => b[1]-a[1]).slice(0, n).reduce((acc, [k,v]) => ({...acc, [k]:v}), {});
+        }
+
+        function exportToExcel() {
+            const ws = XLSX.utils.json_to_sheet(filtered);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Datos");
+            XLSX.writeFile(wb, "exportacion_academica.xlsx");
         }
     </script>
 </body>
