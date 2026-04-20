@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard Académico | Sincronización Drive</title>
+    <title>Dashboard Académico | Historico</title>
     <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -22,17 +22,18 @@
         tr:hover { background: #f8fafc; }
         .pagination { display: flex; gap: 0.5rem; justify-content: flex-end; align-items: center; margin-top: 1rem; font-size: 0.75rem; }
         .pagination button { padding: 0.25rem 0.75rem; border: 1px solid #cbd5e1; border-radius: 4px; background: white; cursor: pointer; }
+        .pagination button:disabled { opacity: 0.5; cursor: not-allowed; }
     </style>
 </head>
 <body>
 
     <div id="loader">
         <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
-        <p id="loader-text" class="font-bold text-slate-700 text-lg">Cargando base de datos...</p>
+        <p id="loader-text" class="font-bold text-slate-700 text-lg">Cargando datos desde GitHub...</p>
         <div id="loader-progress">
             <div id="loader-progress-bar"></div>
         </div>
-        <p id="loader-subtext" class="text-slate-500 text-xs mt-2">Esto puede tardar unos segundos dependiendo del tamaño del JSON.</p>
+        <p id="loader-subtext" class="text-slate-500 text-xs mt-2">Sincronizando archivo datos.json (14MB)...</p>
     </div>
 
     <nav class="bg-slate-900 text-white p-4 sticky top-0 z-50 shadow-lg">
@@ -41,10 +42,10 @@
                 <div class="bg-blue-600 p-2 rounded-lg text-xl">🏛️</div>
                 <div>
                     <h1 class="font-bold text-lg leading-none">Sistema Historico de Planeaciones</h1>
-                    <p id="data-status" class="text-blue-400 text-xs mt-1">Conectando con Google Drive...</p>
+                    <p id="data-status" class="text-blue-400 text-xs mt-1">Buscando datos.json...</p>
                 </div>
             </div>
-            <button onclick="exportToExcel()" id="exportBtn" style="display: none;" class="bg-emerald-600 hover:bg-emerald-500 px-4 py-2 rounded-md font-bold text-sm transition">
+            <button onclick="exportToExcel()" class="bg-emerald-600 hover:bg-emerald-500 px-4 py-2 rounded-md font-bold text-sm transition" id="exportBtn" style="display: none;">
                 ⬇️ Exportar Excel
             </button>
         </div>
@@ -53,10 +54,10 @@
     <div class="max-w-[1600px] mx-auto flex flex-col lg:flex-row p-6 gap-6">
         <aside class="w-full lg:w-72 shrink-0">
             <div class="card sticky top-24">
-                <h3 class="font-bold text-slate-800 border-b pb-3 mb-4 text-xs uppercase">Filtros Activos</h3>
+                <h3 class="font-bold text-slate-800 border-b pb-3 mb-4 text-xs uppercase tracking-wider">Filtros 🔍</h3>
                 <div id="filters" class="space-y-4 max-h-[65vh] overflow-y-auto pr-2"></div>
-                <button onclick="resetFilters()" class="w-full mt-6 py-2 text-xs font-bold text-blue-600 border border-blue-600 rounded hover:bg-blue-50 transition">
-                    LIMPIAR FILTROS
+                <button onclick="resetFilters()" class="w-full mt-6 py-2 text-xs font-bold text-blue-600 border border-blue-600 rounded hover:bg-blue-50 transition uppercase">
+                    Limpiar Filtros
                 </button>
             </div>
         </aside>
@@ -86,11 +87,12 @@
                 <div class="card"><div id="chart-area"></div></div>
                 <div class="card"><div id="chart-estatus"></div></div>
                 <div class="card lg:col-span-2"><div id="chart-planteles-total"></div></div>
+                <div class="card lg:col-span-2"><div id="chart-top-docentes"></div></div>
             </div>
 
             <div class="card">
                 <div class="flex justify-between items-center mb-4">
-                    <h3 class="font-bold text-slate-800 text-sm">📋 Registros Filtrados</h3>
+                    <h3 class="font-bold text-slate-800 text-sm">📋 Tabla de Registros</h3>
                     <span class="text-xs text-slate-500" id="table-count">0 registros</span>
                 </div>
                 <div class="table-container">
@@ -98,22 +100,22 @@
                         <thead>
                             <tr>
                                 <th>Plantel</th>
-                                <th>Matricula</th>
+                                <th>Matrícula</th>
                                 <th>Docente</th>
                                 <th>Materia</th>
                                 <th>Estatus</th>
-                                <th>Semestre</th>
                                 <th>Parcial</th>
                                 <th>Fecha</th>
+                                <th>Semestre Cursado</th>
                             </tr>
                         </thead>
                         <tbody id="table-body"></tbody>
                     </table>
                 </div>
-                <div class="pagination" id="pagination">
-                    <button onclick="prevPage()" id="prevPageBtn">◀ Ant.</button>
+                <div class="pagination">
+                    <button onclick="prevPage()" id="prevPageBtn">◀ Anterior</button>
                     <span id="pageInfo">Página 1</span>
-                    <button onclick="nextPage()" id="nextPageBtn">Sig. ▶</button>
+                    <button onclick="nextPage()" id="nextPageBtn">Siguiente ▶</button>
                 </div>
             </div>
         </main>
@@ -126,64 +128,57 @@
         let currentPage = 1;
         const rowsPerPage = 50;
 
-        // URL del JSON (Uso de un proxy CORS gratuito para GitHub Pages)
-        const FILE_ID = '1eTy-CByIaOWhCEGhW2S-CymsxtmtdMZK';
-        const PROXY_URL = 'https://api.allorigins.win/raw?url=';
-        const DRIVE_URL = `https://docs.google.com/uc?export=download&id=${FILE_ID}`;
-
-        window.onload = async () => {
-            const progressBar = document.getElementById('loader-progress-bar');
+        // CARGA AUTOMÁTICA AL INICIAR
+        window.addEventListener('DOMContentLoaded', async () => {
+            const bar = document.getElementById('loader-progress-bar');
             try {
-                progressBar.style.width = '30%';
+                bar.style.width = '20%';
+                // Petición al archivo que está en el mismo nivel que el HTML
+                const response = await fetch('datos.json');
                 
-                // Intentamos cargar a través de un proxy para evitar el error de CORS en GitHub Pages
-                const response = await fetch(PROXY_URL + encodeURIComponent(DRIVE_URL));
-                
-                if (!response.ok) throw new Error('Error al descargar el archivo.');
-                
-                progressBar.style.width = '60%';
+                if (!response.ok) throw new Error('No se encontró datos.json en el servidor.');
+
+                bar.style.width = '50%';
                 const data = await response.json();
                 
-                progressBar.style.width = '90%';
+                bar.style.width = '80%';
+                // Limpieza básica de datos
                 db = data.map(d => {
-                    let o = {};
-                    for(let k in d) {
-                        let keyName = (k === 'Semestre2') ? 'Semestre Cursado' : k;
-                        o[keyName] = (typeof d[k] === 'string') ? d[k].trim() : d[k];
-                    }
+                    let o = {...d};
+                    // Aseguramos que Semestre Cursado se lea correctamente si viene de Semestre2 u otras fuentes
+                    o["Semestre Cursado"] = d["Semestre Cursado"] || d["Semestre2"] || "N/A";
                     return o;
                 });
 
-                initDashboard();
-                progressBar.style.width = '100%';
+                init();
+                bar.style.width = '100%';
                 setTimeout(() => document.getElementById('loader').style.display = 'none', 500);
 
             } catch (err) {
                 console.error(err);
-                document.getElementById('loader-text').innerText = "Error de Conexión";
-                document.getElementById('loader-subtext').innerHTML = 
-                    `<span class="text-red-500">No se pudieron cargar los datos.</span><br>Asegúrate de que el archivo en Drive sea PÚBLICO.`;
+                document.getElementById('loader-text').innerText = "Error de Datos";
+                document.getElementById('loader-subtext').innerHTML = `<span class="text-red-500">${err.message}</span><br>Asegúrate de que 'datos.json' esté subido a GitHub en la misma carpeta.`;
             }
-        };
+        });
 
-        function initDashboard() {
-            document.getElementById('data-status').innerText = `✅ ${db.length.toLocaleString()} registros cargados.`;
+        function init() {
+            document.getElementById('data-status').innerText = `✅ ${db.length.toLocaleString()} registros sincronizados.`;
             filtered = [...db];
             
-            // Crear Selects de Filtros
-            const keys = ['Estatus', 'plantel', 'semestre', 'turno', 'parcial', 'Area'];
-            const filterContainer = document.getElementById('filters');
+            // Generar filtros dinámicos basados en la estructura del JSON entregado
+            const filterKeys = ['Estatus', 'plantel', 'turno', 'parcial', 'Area', 'Semestre Cursado'];
+            const container = document.getElementById('filters');
             
-            keys.forEach(k => {
-                const values = [...new Set(db.map(x => x[k]).filter(Boolean))].sort();
+            filterKeys.forEach(k => {
+                const vals = [...new Set(db.map(x => x[k]).filter(Boolean))].sort();
                 const div = document.createElement('div');
                 div.innerHTML = `
                     <label class="text-[10px] font-bold text-slate-400 uppercase block mb-1">${k}</label>
-                    <select class="filter-select" onchange="runFilter('${k}', this.value)">
+                    <select class="filter-select" onchange="applyFilter('${k}', this.value)">
                         <option value="ALL">Todos</option>
-                        ${values.map(v => `<option value="${v}">${v}</option>`).join('')}
+                        ${vals.map(v => `<option value="${v}">${v}</option>`).join('')}
                     </select>`;
-                filterContainer.appendChild(div);
+                container.appendChild(div);
             });
 
             renderCharts();
@@ -191,7 +186,7 @@
             document.getElementById('exportBtn').style.display = 'block';
         }
 
-        function runFilter(key, val) {
+        function applyFilter(key, val) {
             if(val === "ALL") delete filterState[key];
             else filterState[key] = val;
             
@@ -205,63 +200,81 @@
             filterState = {};
             document.querySelectorAll('.filter-select').forEach(s => s.value = "ALL");
             filtered = [...db];
+            currentPage = 1;
             renderCharts();
             updateTable();
         }
 
         function renderCharts() {
             document.getElementById('k-total').innerText = filtered.length.toLocaleString();
-            document.getElementById('k-docs').innerText = [...new Set(filtered.map(x => x.matricula))].length;
-            document.getElementById('k-plant').innerText = [...new Set(filtered.map(x => x.plantel))].length;
-            document.getElementById('k-mat').innerText = [...new Set(filtered.map(x => x.materia))].length;
+            document.getElementById('k-docs').innerText = [...new Set(filtered.map(x => x.matricula))].length.toLocaleString();
+            document.getElementById('k-plant').innerText = [...new Set(filtered.map(x => x.plantel))].length.toLocaleString();
+            document.getElementById('k-mat').innerText = [...new Set(filtered.map(x => x.materia))].length.toLocaleString();
 
             const config = { responsive: true, displayModeBar: false };
-            
-            // Gráfico de tiempo
+            const baseLayout = { height: 350, font: {family: 'Inter', size: 10}, margin: {t:30, b:40, l:40, r:10} };
+
+            // Línea de tiempo
             const timeData = countBy(filtered, 'fec_elaboracion');
             Plotly.newPlot('chart-time', [{
                 x: Object.keys(timeData), y: Object.values(timeData),
-                type: 'scatter', mode: 'lines', fill: 'tozeroy', line: {color: '#3b82f6'}
-            }], {title: 'Entregas por Fecha', height: 300}, config);
+                type: 'scatter', mode: 'lines', fill: 'tozeroy', line: {color: '#2563eb'}
+            }], {...baseLayout, title: '<b>ENTREGAS POR FECHA</b>'}, config);
 
-            // Gráfico de Área
+            // Dona de Áreas
             const areaData = countBy(filtered, 'Area');
             Plotly.newPlot('chart-area', [{
                 labels: Object.keys(areaData), values: Object.values(areaData),
                 type: 'pie', hole: 0.4
-            }], {title: 'Por Área', height: 300}, config);
+            }], {...baseLayout, title: '<b>POR ÁREA</b>'}, config);
 
-            // Gráfico de Estatus
+            // Bar Estatus
             const estData = countBy(filtered, 'Estatus');
             Plotly.newPlot('chart-estatus', [{
                 x: Object.keys(estData), y: Object.values(estData), type: 'bar', marker: {color: '#10b981'}
-            }], {title: 'Estatus', height: 300}, config);
+            }], {...baseLayout, title: '<b>ESTATUS</b>'}, config);
+
+            // Bar Planteles
+            const pData = countBy(filtered, 'plantel');
+            Plotly.newPlot('chart-planteles-total', [{
+                x: Object.keys(pData), y: Object.values(pData), type: 'bar', marker: {color: '#6366f1'}
+            }], {...baseLayout, title: '<b>REGISTROS POR PLANTEL</b>'}, config);
+
+            // Top Docentes (Horizontal)
+            const dCounts = countBy(filtered, 'docente');
+            const topDocs = Object.entries(dCounts).sort((a,b) => b[1]-a[1]).slice(0, 10);
+            Plotly.newPlot('chart-top-docentes', [{
+                x: topDocs.map(x => x[1]), y: topDocs.map(x => x[0]),
+                type: 'bar', orientation: 'h', marker: {color: '#f59e0b'}
+            }], {...baseLayout, title: '<b>TOP 10 DOCENTES</b>', margin: {l:150}}, config);
         }
 
         function updateTable() {
             const start = (currentPage - 1) * rowsPerPage;
-            const end = start + rowsPerPage;
-            const pageData = filtered.slice(start, end);
+            const pageData = filtered.slice(start, start + rowsPerPage);
+            const tbody = document.getElementById('table-body');
             
             document.getElementById('table-count').innerText = `${filtered.length.toLocaleString()} registros`;
             document.getElementById('pageInfo').innerText = `Página ${currentPage} de ${Math.ceil(filtered.length/rowsPerPage) || 1}`;
             
-            const tbody = document.getElementById('table-body');
             tbody.innerHTML = pageData.map(d => `
                 <tr>
                     <td>${d.plantel || ''}</td>
                     <td>${d.matricula || ''}</td>
-                    <td>${(d.docente || '').substring(0,20)}...</td>
-                    <td>${(d.materia || '').substring(0,20)}...</td>
+                    <td title="${d.docente}">${(d.docente || '').substring(0,20)}...</td>
+                    <td title="${d.materia}">${(d.materia || '').substring(0,20)}...</td>
                     <td>${d.Estatus || ''}</td>
-                    <td>${d.semestre || ''}</td>
                     <td>${d.parcial || ''}</td>
                     <td>${d.fec_elaboracion || ''}</td>
+                    <td>${d["Semestre Cursado"] || ''}</td>
                 </tr>
             `).join('');
+
+            document.getElementById('prevPageBtn').disabled = currentPage === 1;
+            document.getElementById('nextPageBtn').disabled = currentPage >= Math.ceil(filtered.length/rowsPerPage);
         }
 
-        function nextPage() { if(currentPage * rowsPerPage < filtered.length) { currentPage++; updateTable(); } }
+        function nextPage() { currentPage++; updateTable(); }
         function prevPage() { if(currentPage > 1) { currentPage--; updateTable(); } }
 
         function countBy(arr, key) {
@@ -275,8 +288,8 @@
         function exportToExcel() {
             const ws = XLSX.utils.json_to_sheet(filtered);
             const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws, "Data");
-            XLSX.writeFile(wb, "Dashboard_Export.xlsx");
+            XLSX.utils.book_append_sheet(wb, ws, "Reporte");
+            XLSX.writeFile(wb, "Dashboard_Planeaciones.xlsx");
         }
     </script>
 </body>
