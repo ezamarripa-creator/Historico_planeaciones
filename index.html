@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard Académico | Datos Remotos</title>
+    <title>Dashboard Académico | Sincronización Drive</title>
     <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -12,8 +12,7 @@
         body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
         .card { background: white; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); padding: 1.5rem; border: 1px solid #e2e8f0; }
         .filter-select { width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 0.5rem; font-size: 0.8rem; background: white; transition: all 0.2s; }
-        .filter-select:hover { border-color: #3b82f6; }
-        #loader { display: flex; background: rgba(255,255,255,0.9); backdrop-filter: blur(4px); z-index: 1000; position: fixed; inset: 0; flex-direction: column; align-items: center; justify-content: center; }
+        #loader { display: flex; background: rgba(255,255,255,0.95); backdrop-filter: blur(4px); z-index: 1000; position: fixed; inset: 0; flex-direction: column; align-items: center; justify-content: center; }
         #loader-progress { width: 300px; height: 6px; background: #e2e8f0; border-radius: 3px; overflow: hidden; margin-top: 1rem; }
         #loader-progress-bar { height: 100%; background: #3b82f6; width: 0%; transition: width 0.3s; }
         .table-container { overflow-x: auto; max-height: 400px; border: 1px solid #e2e8f0; border-radius: 8px; }
@@ -21,22 +20,19 @@
         th { background: #f1f5f9; position: sticky; top: 0; z-index: 10; padding: 8px; text-align: left; font-weight: 600; color: #334155; border-bottom: 1px solid #cbd5e1; }
         td { padding: 6px 8px; border-bottom: 1px solid #e2e8f0; color: #1e293b; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         tr:hover { background: #f8fafc; }
-        .export-btn { background: #10b981; color: white; border: none; border-radius: 6px; padding: 0.5rem 1rem; font-size: 0.75rem; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 0.5rem; transition: background 0.2s; }
-        .export-btn:hover { background: #059669; }
         .pagination { display: flex; gap: 0.5rem; justify-content: flex-end; align-items: center; margin-top: 1rem; font-size: 0.75rem; }
         .pagination button { padding: 0.25rem 0.75rem; border: 1px solid #cbd5e1; border-radius: 4px; background: white; cursor: pointer; }
-        .pagination button:disabled { opacity: 0.5; cursor: not-allowed; }
     </style>
 </head>
 <body>
 
     <div id="loader">
         <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
-        <p id="loader-text" class="font-bold text-slate-700 text-lg">Conectando con la base de datos...</p>
+        <p id="loader-text" class="font-bold text-slate-700 text-lg">Cargando base de datos...</p>
         <div id="loader-progress">
             <div id="loader-progress-bar"></div>
         </div>
-        <p id="loader-subtext" class="text-slate-500 text-xs mt-2">Sincronizando con Google Drive...</p>
+        <p id="loader-subtext" class="text-slate-500 text-xs mt-2">Esto puede tardar unos segundos dependiendo del tamaño del JSON.</p>
     </div>
 
     <nav class="bg-slate-900 text-white p-4 sticky top-0 z-50 shadow-lg">
@@ -45,26 +41,22 @@
                 <div class="bg-blue-600 p-2 rounded-lg text-xl">🏛️</div>
                 <div>
                     <h1 class="font-bold text-lg leading-none">Sistema Historico de Planeaciones</h1>
-                    <p id="data-status" class="text-blue-400 text-xs mt-1">Sincronizando datos remotos...</p>
+                    <p id="data-status" class="text-blue-400 text-xs mt-1">Conectando con Google Drive...</p>
                 </div>
             </div>
-            <div class="flex items-center gap-3">
-                <button onclick="exportToExcel()" class="export-btn" id="exportBtn" style="display: none;">
-                    ⬇️ Exportar a Excel
-                </button>
-            </div>
+            <button onclick="exportToExcel()" id="exportBtn" style="display: none;" class="bg-emerald-600 hover:bg-emerald-500 px-4 py-2 rounded-md font-bold text-sm transition">
+                ⬇️ Exportar Excel
+            </button>
         </div>
     </nav>
 
     <div class="max-w-[1600px] mx-auto flex flex-col lg:flex-row p-6 gap-6">
         <aside class="w-full lg:w-72 shrink-0">
             <div class="card sticky top-24">
-                <h3 class="font-bold text-slate-800 border-b pb-3 mb-4 flex justify-between text-xs uppercase tracking-wider">Filtros Activos <span>🔍</span></h3>
-                <div id="filters" class="space-y-4 max-h-[65vh] overflow-y-auto pr-2">
-                    <p class="text-slate-400 text-xs italic text-center">Cargando filtros...</p>
-                </div>
-                <button onclick="resetFilters()" class="w-full mt-6 py-2 text-xs font-bold text-blue-600 border border-blue-600 rounded hover:bg-blue-50 transition uppercase">
-                    Limpiar Filtros
+                <h3 class="font-bold text-slate-800 border-b pb-3 mb-4 text-xs uppercase">Filtros Activos</h3>
+                <div id="filters" class="space-y-4 max-h-[65vh] overflow-y-auto pr-2"></div>
+                <button onclick="resetFilters()" class="w-full mt-6 py-2 text-xs font-bold text-blue-600 border border-blue-600 rounded hover:bg-blue-50 transition">
+                    LIMPIAR FILTROS
                 </button>
             </div>
         </aside>
@@ -76,7 +68,7 @@
                     <span id="k-total" class="text-2xl font-bold text-slate-800">0</span>
                 </div>
                 <div class="card border-l-4 border-emerald-500">
-                    <p class="text-[10px] font-bold text-slate-400 uppercase">Docentes Únicos</p>
+                    <p class="text-[10px] font-bold text-slate-400 uppercase">Docentes</p>
                     <span id="k-docs" class="text-2xl font-bold text-slate-800">0</span>
                 </div>
                 <div class="card border-l-4 border-amber-500">
@@ -92,11 +84,8 @@
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <div class="card lg:col-span-2"><div id="chart-time"></div></div>
                 <div class="card"><div id="chart-area"></div></div>
-                <div class="card"><div id="chart-semestre-cursado"></div></div>
                 <div class="card"><div id="chart-estatus"></div></div>
-                <div class="card"><div id="chart-tipo"></div></div>
                 <div class="card lg:col-span-2"><div id="chart-planteles-total"></div></div>
-                <div class="card lg:col-span-2"><div id="chart-top-docentes"></div></div>
             </div>
 
             <div class="card">
@@ -108,29 +97,23 @@
                     <table id="data-table">
                         <thead>
                             <tr>
-                                <th>idPlantel</th>
-                                <th>plantel</th>
-                                <th>matricula</th>
-                                <th>docente</th>
-                                <th>materia</th>
+                                <th>Plantel</th>
+                                <th>Matricula</th>
+                                <th>Docente</th>
+                                <th>Materia</th>
                                 <th>Estatus</th>
-                                <th>semestre</th>
-                                <th>turno</th>
-                                <th>grupos</th>
-                                <th>parcial</th>
-                                <th>fec_elaboracion</th>
-                                <th>Semestre Cursado</th>
+                                <th>Semestre</th>
+                                <th>Parcial</th>
+                                <th>Fecha</th>
                             </tr>
                         </thead>
-                        <tbody id="table-body">
-                            <tr><td colspan="12" class="text-center text-slate-400 py-4">Sincronizando datos...</td></tr>
-                        </tbody>
+                        <tbody id="table-body"></tbody>
                     </table>
                 </div>
                 <div class="pagination" id="pagination">
-                    <button onclick="prevPage()" id="prevPageBtn" disabled>◀ Anterior</button>
-                    <span id="pageInfo">Página 1 de 1</span>
-                    <button onclick="nextPage()" id="nextPageBtn" disabled>Siguiente ▶</button>
+                    <button onclick="prevPage()" id="prevPageBtn">◀ Ant.</button>
+                    <span id="pageInfo">Página 1</span>
+                    <button onclick="nextPage()" id="nextPageBtn">Sig. ▶</button>
                 </div>
             </div>
         </main>
@@ -141,90 +124,80 @@
         let filtered = [];
         let filterState = {};
         let currentPage = 1;
-        const rowsPerPage = 100;
-        let totalPages = 1;
+        const rowsPerPage = 50;
 
-        // ID del archivo de Google Drive extraído de tu link
+        // URL del JSON (Uso de un proxy CORS gratuito para GitHub Pages)
         const FILE_ID = '1eTy-CByIaOWhCEGhW2S-CymsxtmtdMZK';
-        // Proxy para evitar bloqueos de CORS (CORS-Anywhere o similar es recomendado si fetch falla directamente)
-        const DATA_URL = `https://docs.google.com/uc?export=download&id=${FILE_ID}`;
+        const PROXY_URL = 'https://api.allorigins.win/raw?url=';
+        const DRIVE_URL = `https://docs.google.com/uc?export=download&id=${FILE_ID}`;
 
-        // Carga automática al iniciar
-        window.addEventListener('DOMContentLoaded', async () => {
-            const loader = document.getElementById('loader');
+        window.onload = async () => {
             const progressBar = document.getElementById('loader-progress-bar');
-            
             try {
-                progressBar.style.width = '20%';
+                progressBar.style.width = '30%';
                 
-                // Fetch de los datos
-                const response = await fetch(DATA_URL);
-                if (!response.ok) throw new Error("No se pudo acceder al archivo en Drive. Asegúrate de que el archivo sea 'Público (Cualquier persona con el enlace)'.");
+                // Intentamos cargar a través de un proxy para evitar el error de CORS en GitHub Pages
+                const response = await fetch(PROXY_URL + encodeURIComponent(DRIVE_URL));
                 
-                progressBar.style.width = '50%';
-                document.getElementById('loader-subtext').innerText = 'Descargando contenido...';
+                if (!response.ok) throw new Error('Error al descargar el archivo.');
                 
-                const rawData = await response.json();
+                progressBar.style.width = '60%';
+                const data = await response.json();
                 
-                progressBar.style.width = '80%';
-                document.getElementById('loader-subtext').innerText = 'Procesando registros...';
-
-                // Procesamiento igual al original
-                db = rawData.map(d => {
+                progressBar.style.width = '90%';
+                db = data.map(d => {
                     let o = {};
                     for(let k in d) {
                         let keyName = (k === 'Semestre2') ? 'Semestre Cursado' : k;
-                        o[keyName] = (typeof d[k] === 'string') ? d[k].trim().replace(/\s+/g, ' ') : d[k];
+                        o[keyName] = (typeof d[k] === 'string') ? d[k].trim() : d[k];
                     }
                     return o;
                 });
 
-                init();
-                
+                initDashboard();
                 progressBar.style.width = '100%';
-                setTimeout(() => loader.style.display = 'none', 500);
+                setTimeout(() => document.getElementById('loader').style.display = 'none', 500);
 
             } catch (err) {
                 console.error(err);
                 document.getElementById('loader-text').innerText = "Error de Conexión";
-                document.getElementById('loader-subtext').innerHTML = `<span class="text-red-500">${err.message}</span><br><br>Por favor, asegúrate de que el archivo en Drive esté compartido como 'Público'.`;
-                document.getElementById('loader-progress').style.display = 'none';
+                document.getElementById('loader-subtext').innerHTML = 
+                    `<span class="text-red-500">No se pudieron cargar los datos.</span><br>Asegúrate de que el archivo en Drive sea PÚBLICO.`;
             }
-        });
+        };
 
-        function init() {
-            document.getElementById('data-status').innerHTML = `✅ Datos Sincronizados: ${db.length.toLocaleString()} registros.`;
+        function initDashboard() {
+            document.getElementById('data-status').innerText = `✅ ${db.length.toLocaleString()} registros cargados.`;
             filtered = [...db];
             
-            const keys = ['Estatus', 'plantel', 'semestre', 'turno', 'parcial', 'Area', 'Semestre Cursado', 'Tipo'];
-            const box = document.getElementById('filters');
-            box.innerHTML = '';
+            // Crear Selects de Filtros
+            const keys = ['Estatus', 'plantel', 'semestre', 'turno', 'parcial', 'Area'];
+            const filterContainer = document.getElementById('filters');
             
             keys.forEach(k => {
-                const values = db.map(x => x[k]).filter(v => v != null && v !== '');
-                const unique = [...new Set(values)].sort();
-                
+                const values = [...new Set(db.map(x => x[k]).filter(Boolean))].sort();
                 const div = document.createElement('div');
                 div.innerHTML = `
-                    <label class="text-[10px] font-bold text-slate-400 uppercase mb-1 block">${k}</label>
+                    <label class="text-[10px] font-bold text-slate-400 uppercase block mb-1">${k}</label>
                     <select class="filter-select" onchange="runFilter('${k}', this.value)">
-                        <option value="ALL">Ver todos</option>
-                        ${unique.map(v => `<option value="${v}">${v}</option>`).join('')}
+                        <option value="ALL">Todos</option>
+                        ${values.map(v => `<option value="${v}">${v}</option>`).join('')}
                     </select>`;
-                box.appendChild(div);
+                filterContainer.appendChild(div);
             });
-            
-            render();
+
+            renderCharts();
             updateTable();
-            document.getElementById('exportBtn').style.display = 'inline-flex';
+            document.getElementById('exportBtn').style.display = 'block';
         }
 
         function runFilter(key, val) {
             if(val === "ALL") delete filterState[key];
             else filterState[key] = val;
-            filtered = db.filter(d => Object.keys(filterState).every(k => String(d[k] || '') === filterState[k]));
+            
+            filtered = db.filter(d => Object.keys(filterState).every(k => String(d[k]) === filterState[k]));
             currentPage = 1;
-            render();
+            renderCharts();
             updateTable();
         }
 
@@ -232,89 +205,64 @@
             filterState = {};
             document.querySelectorAll('.filter-select').forEach(s => s.value = "ALL");
             filtered = [...db];
-            currentPage = 1;
-            render();
+            renderCharts();
             updateTable();
         }
 
-        function render() {
-            if (!filtered.length) {
-                document.querySelectorAll('[id^="k-"]').forEach(el => el.innerText = '0');
-                return;
-            }
-
+        function renderCharts() {
             document.getElementById('k-total').innerText = filtered.length.toLocaleString();
-            document.getElementById('k-docs').innerText = [...new Set(filtered.map(x => x.matricula))].length.toLocaleString();
-            document.getElementById('k-plant').innerText = [...new Set(filtered.map(x => x.plantel))].length.toLocaleString();
-            document.getElementById('k-mat').innerText = [...new Set(filtered.map(x => x.materia))].length.toLocaleString();
+            document.getElementById('k-docs').innerText = [...new Set(filtered.map(x => x.matricula))].length;
+            document.getElementById('k-plant').innerText = [...new Set(filtered.map(x => x.plantel))].length;
+            document.getElementById('k-mat').innerText = [...new Set(filtered.map(x => x.materia))].length;
 
             const config = { responsive: true, displayModeBar: false };
-            const layoutBase = { height: 380, font: {family: 'Inter', size: 10}, margin: {t:40, b:60, l:50, r:10} };
-
-            // Gráficos (Mismo sistema anterior)
-            const timeMap = countBy(filtered, 'fec_elaboracion');
-            Plotly.newPlot('chart-time', [{x: Object.keys(timeMap), y: Object.values(timeMap), type: 'scatter', mode: 'lines', fill: 'tozeroy'}], {...layoutBase, title: '<b>EVOLUCIÓN TEMPORAL</b>'}, config);
             
-            const areaMap = countBy(filtered, 'Area');
-            Plotly.newPlot('chart-area', [{labels: Object.keys(areaMap), values: Object.values(areaMap), type: 'pie', hole: 0.5}], {...layoutBase, title: '<b>ÁREA ACADÉMICA</b>'}, config);
+            // Gráfico de tiempo
+            const timeData = countBy(filtered, 'fec_elaboracion');
+            Plotly.newPlot('chart-time', [{
+                x: Object.keys(timeData), y: Object.values(timeData),
+                type: 'scatter', mode: 'lines', fill: 'tozeroy', line: {color: '#3b82f6'}
+            }], {title: 'Entregas por Fecha', height: 300}, config);
 
-            const semCMap = countBy(filtered, 'Semestre Cursado');
-            Plotly.newPlot('chart-semestre-cursado', [{x: Object.keys(semCMap), y: Object.values(semCMap), type: 'bar', marker: {color: '#8b5cf6'}}], {...layoutBase, title: '<b>POR SEMESTRE CURSADO</b>'}, config);
+            // Gráfico de Área
+            const areaData = countBy(filtered, 'Area');
+            Plotly.newPlot('chart-area', [{
+                labels: Object.keys(areaData), values: Object.values(areaData),
+                type: 'pie', hole: 0.4
+            }], {title: 'Por Área', height: 300}, config);
 
-            const estMap = countBy(filtered, 'Estatus');
-            Plotly.newPlot('chart-estatus', [{x: Object.keys(estMap), y: Object.values(estMap), type: 'bar', marker: {color: '#10b981'}}], {...layoutBase, title: '<b>ESTATUS</b>'}, config);
-
-            const plantTotalMap = countBy(filtered, 'plantel');
-            Plotly.newPlot('chart-planteles-total', [{x: Object.keys(plantTotalMap), y: Object.values(plantTotalMap), type: 'bar'}], {...layoutBase, title: '<b>REGISTROS POR PLANTEL</b>'}, config);
-
-            const docMap = topN(countBy(filtered, 'docente'), 10);
-            Plotly.newPlot('chart-top-docentes', [{x: Object.values(docMap), y: Object.keys(docMap), type: 'bar', orientation: 'h'}], {...layoutBase, title: '<b>TOP 10 DOCENTES</b>', margin: {l:200}}, config);
+            // Gráfico de Estatus
+            const estData = countBy(filtered, 'Estatus');
+            Plotly.newPlot('chart-estatus', [{
+                x: Object.keys(estData), y: Object.values(estData), type: 'bar', marker: {color: '#10b981'}
+            }], {title: 'Estatus', height: 300}, config);
         }
 
         function updateTable() {
-            const tbody = document.getElementById('table-body');
-            const countSpan = document.getElementById('table-count');
+            const start = (currentPage - 1) * rowsPerPage;
+            const end = start + rowsPerPage;
+            const pageData = filtered.slice(start, end);
             
-            if (!filtered.length) {
-                tbody.innerHTML = '<tr><td colspan="12" class="text-center py-4">Sin resultados</td></tr>';
-                return;
-            }
-
-            countSpan.innerText = `${filtered.length.toLocaleString()} registros`;
-            totalPages = Math.ceil(filtered.length / rowsPerPage);
-            const pageData = filtered.slice((currentPage - 1) * rowsPerPage, currentPage * rowsPerPage);
-
+            document.getElementById('table-count').innerText = `${filtered.length.toLocaleString()} registros`;
+            document.getElementById('pageInfo').innerText = `Página ${currentPage} de ${Math.ceil(filtered.length/rowsPerPage) || 1}`;
+            
+            const tbody = document.getElementById('table-body');
             tbody.innerHTML = pageData.map(d => `
                 <tr>
-                    <td>${d.idPlantel || ''}</td>
                     <td>${d.plantel || ''}</td>
                     <td>${d.matricula || ''}</td>
-                    <td title="${d.docente}">${(d.docente || '').substring(0,25)}...</td>
-                    <td title="${d.materia}">${(d.materia || '').substring(0,25)}...</td>
+                    <td>${(d.docente || '').substring(0,20)}...</td>
+                    <td>${(d.materia || '').substring(0,20)}...</td>
                     <td>${d.Estatus || ''}</td>
                     <td>${d.semestre || ''}</td>
-                    <td>${d.turno || ''}</td>
-                    <td>${d.grupos || ''}</td>
                     <td>${d.parcial || ''}</td>
                     <td>${d.fec_elaboracion || ''}</td>
-                    <td>${d['Semestre Cursado'] || ''}</td>
                 </tr>
             `).join('');
-
-            document.getElementById('pageInfo').innerText = `Página ${currentPage} de ${totalPages}`;
-            document.getElementById('prevPageBtn').disabled = currentPage === 1;
-            document.getElementById('nextPageBtn').disabled = currentPage === totalPages;
         }
 
+        function nextPage() { if(currentPage * rowsPerPage < filtered.length) { currentPage++; updateTable(); } }
         function prevPage() { if(currentPage > 1) { currentPage--; updateTable(); } }
-        function nextPage() { if(currentPage < totalPages) { currentPage++; updateTable(); } }
-
-        function exportToExcel() {
-            const ws = XLSX.utils.json_to_sheet(filtered);
-            const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws, "Data");
-            XLSX.writeFile(wb, "Reporte_Academico.xlsx");
-        }
 
         function countBy(arr, key) {
             return arr.reduce((acc, obj) => {
@@ -324,8 +272,11 @@
             }, {});
         }
 
-        function topN(obj, n) {
-            return Object.entries(obj).sort((a,b) => b[1]-a[1]).slice(0, n).reduce((acc, [k,v]) => ({...acc, [k]:v}), {});
+        function exportToExcel() {
+            const ws = XLSX.utils.json_to_sheet(filtered);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Data");
+            XLSX.writeFile(wb, "Dashboard_Export.xlsx");
         }
     </script>
 </body>
