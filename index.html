@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard Académico | Datos GitHub</title>
+    <title>Dashboard Académico | Datos Remotos</title>
     <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -13,7 +13,7 @@
         .card { background: white; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); padding: 1.5rem; border: 1px solid #e2e8f0; }
         .filter-select { width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 0.5rem; font-size: 0.8rem; background: white; transition: all 0.2s; }
         .filter-select:hover { border-color: #3b82f6; }
-        #loader { display: flex; background: rgba(255,255,255,0.9); backdrop-filter: blur(4px); z-index: 1000; }
+        #loader { display: flex; background: rgba(255,255,255,0.9); backdrop-filter: blur(4px); z-index: 1000; position: fixed; inset: 0; flex-direction: column; align-items: center; justify-content: center; }
         #loader-progress { width: 300px; height: 6px; background: #e2e8f0; border-radius: 3px; overflow: hidden; margin-top: 1rem; }
         #loader-progress-bar { height: 100%; background: #3b82f6; width: 0%; transition: width 0.3s; }
         .table-container { overflow-x: auto; max-height: 400px; border: 1px solid #e2e8f0; border-radius: 8px; }
@@ -30,13 +30,13 @@
 </head>
 <body>
 
-    <div id="loader" class="fixed inset-0 flex flex-col items-center justify-center">
+    <div id="loader">
         <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
-        <p id="loader-text" class="font-bold text-slate-700 text-lg">Conectando con GitHub...</p>
+        <p id="loader-text" class="font-bold text-slate-700 text-lg">Conectando con la base de datos...</p>
         <div id="loader-progress">
             <div id="loader-progress-bar"></div>
         </div>
-        <p id="loader-subtext" class="text-slate-500 text-xs mt-2">Iniciando descarga de datos...</p>
+        <p id="loader-subtext" class="text-slate-500 text-xs mt-2">Sincronizando con Google Drive...</p>
     </div>
 
     <nav class="bg-slate-900 text-white p-4 sticky top-0 z-50 shadow-lg">
@@ -44,8 +44,8 @@
             <div class="flex items-center gap-3">
                 <div class="bg-blue-600 p-2 rounded-lg text-xl">🏛️</div>
                 <div>
-                    <h1 class="font-bold text-lg leading-none">Sistema Histórico de Planeaciones</h1>
-                    <p id="data-status" class="text-blue-400 text-xs mt-1">Sincronizando datos...</p>
+                    <h1 class="font-bold text-lg leading-none">Sistema Historico de Planeaciones</h1>
+                    <p id="data-status" class="text-blue-400 text-xs mt-1">Sincronizando datos remotos...</p>
                 </div>
             </div>
             <div class="flex items-center gap-3">
@@ -123,7 +123,7 @@
                             </tr>
                         </thead>
                         <tbody id="table-body">
-                            <tr><td colspan="12" class="text-center text-slate-400 py-4">Sincronizando con repositorio...</td></tr>
+                            <tr><td colspan="12" class="text-center text-slate-400 py-4">Sincronizando datos...</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -144,29 +144,32 @@
         const rowsPerPage = 100;
         let totalPages = 1;
 
-        // Configuración de GitHub - CAMBIA ESTOS VALORES
-        const GITHUB_CONFIG = {
-            usuario: 'TU_USUARIO', // Reemplaza con tu usuario
-            repo: 'TU_REPOSITORIO', // Reemplaza con el nombre de tu repo
-            archivo: 'datos.json'
-        };
+        // ID del archivo de Google Drive extraído de tu link
+        const FILE_ID = '1eTy-CByIaOWhCEGhW2S-CymsxtmtdMZK';
+        // Proxy para evitar bloqueos de CORS (CORS-Anywhere o similar es recomendado si fetch falla directamente)
+        const DATA_URL = `https://docs.google.com/uc?export=download&id=${FILE_ID}`;
 
-        window.onload = async function() {
-            const url = `https://raw.githubusercontent.com/${GITHUB_CONFIG.usuario}/${GITHUB_CONFIG.repo}/main/${GITHUB_CONFIG.archivo}`;
+        // Carga automática al iniciar
+        window.addEventListener('DOMContentLoaded', async () => {
+            const loader = document.getElementById('loader');
+            const progressBar = document.getElementById('loader-progress-bar');
             
             try {
-                document.getElementById('loader-progress-bar').style.width = '20%';
-                const response = await fetch(url);
+                progressBar.style.width = '20%';
                 
-                if (!response.ok) throw new Error('No se pudo obtener el archivo de GitHub');
+                // Fetch de los datos
+                const response = await fetch(DATA_URL);
+                if (!response.ok) throw new Error("No se pudo acceder al archivo en Drive. Asegúrate de que el archivo sea 'Público (Cualquier persona con el enlace)'.");
                 
-                document.getElementById('loader-progress-bar').style.width = '50%';
-                document.getElementById('loader-subtext').innerText = 'Parseando datos...';
+                progressBar.style.width = '50%';
+                document.getElementById('loader-subtext').innerText = 'Descargando contenido...';
                 
                 const rawData = await response.json();
                 
-                document.getElementById('loader-progress-bar').style.width = '80%';
-                
+                progressBar.style.width = '80%';
+                document.getElementById('loader-subtext').innerText = 'Procesando registros...';
+
+                // Procesamiento igual al original
                 db = rawData.map(d => {
                     let o = {};
                     for(let k in d) {
@@ -178,17 +181,16 @@
 
                 init();
                 
-                document.getElementById('loader-progress-bar').style.width = '100%';
-                setTimeout(() => {
-                    document.getElementById('loader').style.display = 'none';
-                }, 500);
+                progressBar.style.width = '100%';
+                setTimeout(() => loader.style.display = 'none', 500);
 
             } catch (err) {
-                document.getElementById('loader-text').innerText = 'Error de conexión';
-                document.getElementById('loader-subtext').innerHTML = `<span class="text-red-500">${err.message}</span><br>Verifique la URL del repositorio.`;
                 console.error(err);
+                document.getElementById('loader-text').innerText = "Error de Conexión";
+                document.getElementById('loader-subtext').innerHTML = `<span class="text-red-500">${err.message}</span><br><br>Por favor, asegúrate de que el archivo en Drive esté compartido como 'Público'.`;
+                document.getElementById('loader-progress').style.display = 'none';
             }
-        };
+        });
 
         function init() {
             document.getElementById('data-status').innerHTML = `✅ Datos Sincronizados: ${db.length.toLocaleString()} registros.`;
@@ -217,8 +219,6 @@
             document.getElementById('exportBtn').style.display = 'inline-flex';
         }
 
-        // --- LÓGICA DE FILTRADO Y TABLA (Igual a la original) ---
-
         function runFilter(key, val) {
             if(val === "ALL") delete filterState[key];
             else filterState[key] = val;
@@ -239,7 +239,7 @@
 
         function render() {
             if (!filtered.length) {
-                ['k-total','k-docs','k-plant','k-mat'].forEach(id => document.getElementById(id).innerText = '0');
+                document.querySelectorAll('[id^="k-"]').forEach(el => el.innerText = '0');
                 return;
             }
 
@@ -249,54 +249,48 @@
             document.getElementById('k-mat').innerText = [...new Set(filtered.map(x => x.materia))].length.toLocaleString();
 
             const config = { responsive: true, displayModeBar: false };
-            const layoutBase = { height: 350, font: {family: 'Inter', size: 10}, margin: {t:40, b:60, l:50, r:10} };
+            const layoutBase = { height: 380, font: {family: 'Inter', size: 10}, margin: {t:40, b:60, l:50, r:10} };
 
-            // Gráficos básicos
+            // Gráficos (Mismo sistema anterior)
             const timeMap = countBy(filtered, 'fec_elaboracion');
-            Plotly.newPlot('chart-time', [{x: Object.keys(timeMap), y: Object.values(timeMap), type: 'scatter', fill: 'tozeroy'}], {...layoutBase, title: 'EVOLUCIÓN TEMPORAL'}, config);
-
+            Plotly.newPlot('chart-time', [{x: Object.keys(timeMap), y: Object.values(timeMap), type: 'scatter', mode: 'lines', fill: 'tozeroy'}], {...layoutBase, title: '<b>EVOLUCIÓN TEMPORAL</b>'}, config);
+            
             const areaMap = countBy(filtered, 'Area');
-            Plotly.newPlot('chart-area', [{labels: Object.keys(areaMap), values: Object.values(areaMap), type: 'pie', hole: 0.4}], {...layoutBase, title: 'ÁREAS ACADÉMICAS'}, config);
+            Plotly.newPlot('chart-area', [{labels: Object.keys(areaMap), values: Object.values(areaMap), type: 'pie', hole: 0.5}], {...layoutBase, title: '<b>ÁREA ACADÉMICA</b>'}, config);
 
             const semCMap = countBy(filtered, 'Semestre Cursado');
-            Plotly.newPlot('chart-semestre-cursado', [{x: Object.keys(semCMap), y: Object.values(semCMap), type: 'bar', marker: {color: '#8b5cf6'}}], {...layoutBase, title: 'SEMESTRE CURSADO'}, config);
+            Plotly.newPlot('chart-semestre-cursado', [{x: Object.keys(semCMap), y: Object.values(semCMap), type: 'bar', marker: {color: '#8b5cf6'}}], {...layoutBase, title: '<b>POR SEMESTRE CURSADO</b>'}, config);
 
             const estMap = countBy(filtered, 'Estatus');
-            Plotly.newPlot('chart-estatus', [{x: Object.keys(estMap), y: Object.values(estMap), type: 'bar', marker: {color: '#10b981'}}], {...layoutBase, title: 'ESTATUS'}, config);
-
-            const tipoMap = countBy(filtered, 'Tipo');
-            Plotly.newPlot('chart-tipo', [{labels: Object.keys(tipoMap), values: Object.values(tipoMap), type: 'pie'}], {...layoutBase, title: 'POR TIPO'}, config);
+            Plotly.newPlot('chart-estatus', [{x: Object.keys(estMap), y: Object.values(estMap), type: 'bar', marker: {color: '#10b981'}}], {...layoutBase, title: '<b>ESTATUS</b>'}, config);
 
             const plantTotalMap = countBy(filtered, 'plantel');
-            Plotly.newPlot('chart-planteles-total', [{x: Object.keys(plantTotalMap), y: Object.values(plantTotalMap), type: 'bar'}], {...layoutBase, title: 'REGISTROS POR PLANTEL'}, config);
+            Plotly.newPlot('chart-planteles-total', [{x: Object.keys(plantTotalMap), y: Object.values(plantTotalMap), type: 'bar'}], {...layoutBase, title: '<b>REGISTROS POR PLANTEL</b>'}, config);
 
             const docMap = topN(countBy(filtered, 'docente'), 10);
-            Plotly.newPlot('chart-top-docentes', [{x: Object.values(docMap), y: Object.keys(docMap), type: 'bar', orientation: 'h'}], {...layoutBase, title: 'TOP 10 DOCENTES', margin: {l:150}}, config);
+            Plotly.newPlot('chart-top-docentes', [{x: Object.values(docMap), y: Object.keys(docMap), type: 'bar', orientation: 'h'}], {...layoutBase, title: '<b>TOP 10 DOCENTES</b>', margin: {l:200}}, config);
         }
 
         function updateTable() {
             const tbody = document.getElementById('table-body');
+            const countSpan = document.getElementById('table-count');
+            
             if (!filtered.length) {
-                tbody.innerHTML = '<tr><td colspan="12" class="text-center py-4">No hay datos</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="12" class="text-center py-4">Sin resultados</td></tr>';
                 return;
             }
 
+            countSpan.innerText = `${filtered.length.toLocaleString()} registros`;
             totalPages = Math.ceil(filtered.length / rowsPerPage);
-            const start = (currentPage - 1) * rowsPerPage;
-            const pageData = filtered.slice(start, start + rowsPerPage);
-            
-            document.getElementById('table-count').innerText = `${filtered.length.toLocaleString()} registros`;
-            document.getElementById('pageInfo').innerText = `Página ${currentPage} de ${totalPages}`;
-            document.getElementById('prevPageBtn').disabled = currentPage === 1;
-            document.getElementById('nextPageBtn').disabled = currentPage === totalPages;
+            const pageData = filtered.slice((currentPage - 1) * rowsPerPage, currentPage * rowsPerPage);
 
             tbody.innerHTML = pageData.map(d => `
                 <tr>
                     <td>${d.idPlantel || ''}</td>
                     <td>${d.plantel || ''}</td>
                     <td>${d.matricula || ''}</td>
-                    <td>${(d.docente || '').substring(0,25)}</td>
-                    <td>${(d.materia || '').substring(0,25)}</td>
+                    <td title="${d.docente}">${(d.docente || '').substring(0,25)}...</td>
+                    <td title="${d.materia}">${(d.materia || '').substring(0,25)}...</td>
                     <td>${d.Estatus || ''}</td>
                     <td>${d.semestre || ''}</td>
                     <td>${d.turno || ''}</td>
@@ -306,28 +300,32 @@
                     <td>${d['Semestre Cursado'] || ''}</td>
                 </tr>
             `).join('');
+
+            document.getElementById('pageInfo').innerText = `Página ${currentPage} de ${totalPages}`;
+            document.getElementById('prevPageBtn').disabled = currentPage === 1;
+            document.getElementById('nextPageBtn').disabled = currentPage === totalPages;
         }
 
         function prevPage() { if(currentPage > 1) { currentPage--; updateTable(); } }
         function nextPage() { if(currentPage < totalPages) { currentPage++; updateTable(); } }
 
+        function exportToExcel() {
+            const ws = XLSX.utils.json_to_sheet(filtered);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Data");
+            XLSX.writeFile(wb, "Reporte_Academico.xlsx");
+        }
+
         function countBy(arr, key) {
             return arr.reduce((acc, obj) => {
-                const v = obj[key];
-                if (v) acc[v] = (acc[v] || 0) + 1;
+                const v = obj[key] || 'N/A';
+                acc[v] = (acc[v] || 0) + 1;
                 return acc;
             }, {});
         }
 
         function topN(obj, n) {
             return Object.entries(obj).sort((a,b) => b[1]-a[1]).slice(0, n).reduce((acc, [k,v]) => ({...acc, [k]:v}), {});
-        }
-
-        function exportToExcel() {
-            const ws = XLSX.utils.json_to_sheet(filtered);
-            const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws, "Datos");
-            XLSX.writeFile(wb, "exportacion_academica.xlsx");
         }
     </script>
 </body>
