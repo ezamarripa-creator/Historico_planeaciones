@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Académico | Planeaciones</title>
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
+        .card { background: white; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); padding: 1.5rem; border: 1px solid #e2e8f0; }
+        .filter-select { width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 0.5rem; font-size: 0.8rem; background: white; transition: all 0.2s; }
+        .filter-select:hover { border-color: #3b82f6; }
+        #loader { display: none; background: rgba(255,255,255,0.9); backdrop-filter: blur(4px); z-index: 1000; }
+        #loader-progress { width: 300px; height: 6px; background: #e2e8f0; border-radius: 3px; overflow: hidden; margin-top: 1rem; }
+        #loader-progress-bar { height: 100%; background: #3b82f6; width: 0%; transition: width 0.3s; }
+        .table-container { overflow-x: auto; max-height: 400px; border: 1px solid #e2e8f0; border-radius: 8px; }
+        table { width: 100%; border-collapse: collapse; font-size: 0.75rem; }
+        th { background: #f1f5f9; position: sticky; top: 0; z-index: 10; padding: 8px; text-align: left; font-weight: 600; color: #334155; border-bottom: 1px solid #cbd5e1; }
+        td { padding: 6px 8px; border-bottom: 1px solid #e2e8f0; color: #1e293b; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        tr:hover { background: #f8fafc; }
+        .export-btn { background: #10b981; color: white; border: none; border-radius: 6px; padding: 0.5rem 1rem; font-size: 0.75rem; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 0.5rem; transition: background 0.2s; }
+        .export-btn:hover { background: #059669; }
+        .pagination { display: flex; gap: 0.5rem; justify-content: flex-end; align-items: center; margin-top: 1rem; font-size: 0.75rem; }
+        .pagination button { padding: 0.25rem 0.75rem; border: 1px solid #cbd5e1; border-radius: 4px; background: white; cursor: pointer; }
+        .pagination button:disabled { opacity: 0.5; cursor: not-allowed; }
+    </style>
+</head>
+<body>
+
+    <div id="loader" class="fixed inset-0 flex flex-col items-center justify-center">
+        <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
+        <p id="loader-text" class="font-bold text-slate-700 text-lg">Conectando con GitHub...</p>
+        <div id="loader-progress">
+            <div id="loader-progress-bar"></div>
+        </div>
+        <p id="loader-subtext" class="text-slate-500 text-xs mt-2">Sincronizando datos...</p>
+    </div>
+
+    <nav class="bg-slate-900 text-white p-4 sticky top-0 z-50 shadow-lg">
+        <div class="max-w-7xl mx-auto flex justify-between items-center">
+            <div class="flex items-center gap-3">
+                <div class="bg-blue-600 p-2 rounded-lg text-xl">🏛️</div>
+                <div>
+                    <h1 class="font-bold text-lg leading-none">Sistema Histórico de Planeaciones</h1>
+                    <p id="data-status" class="text-blue-400 text-xs mt-1">Conectando a repositorio remoto...</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-3">
+                <button onclick="exportToExcel()" class="export-btn" id="exportBtn" style="display: none;">
+                    ⬇️ Exportar a Excel
+                </button>
+                <button onclick="fetchGitHubData()" class="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-md font-bold text-sm transition shadow-lg flex items-center gap-2">
+                    🔄 Actualizar Datos
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <div class="max-w-[1600px] mx-auto flex flex-col lg:flex-row p-6 gap-6">
+        <aside class="w-full lg:w-72 shrink-0">
+            <div class="card sticky top-24">
+                <h3 class="font-bold text-slate-800 border-b pb-3 mb-4 flex justify-between text-xs uppercase tracking-wider">Filtros Activos <span>🔍</span></h3>
+                <div id="filters" class="space-y-4 max-h-[65vh] overflow-y-auto pr-2">
+                    <p class="text-slate-400 text-xs italic text-center">Cargando filtros...</p>
+                </div>
+                <button onclick="resetFilters()" class="w-full mt-6 py-2 text-xs font-bold text-blue-600 border border-blue-600 rounded hover:bg-blue-50 transition uppercase">
+                    Limpiar Filtros
+                </button>
+            </div>
+        </aside>
+
+        <main class="flex-1 space-y-6">
+            <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                <div class="card border-l-4 border-blue-600">
+                    <p class="text-[10px] font-bold text-slate-400 uppercase">Total Registros</p>
+                    <span id="k-total" class="text-2xl font-bold text-slate-800">0</span>
+                </div>
+                <div class="card border-l-4 border-emerald-500">
+                    <p class="text-[10px] font-bold text-slate-400 uppercase">Docentes Únicos</p>
+                    <span id="k-docs" class="text-2xl font-bold text-slate-800">0</span>
+                </div>
+                <div class="card border-l-4 border-amber-500">
+                    <p class="text-[10px] font-bold text-slate-400 uppercase">Planteles</p>
+                    <span id="k-plant" class="text-2xl font-bold text-slate-800">0</span>
+                </div>
+                <div class="card border-l-4 border-purple-600">
+                    <p class="text-[10px] font-bold text-slate-400 uppercase">Materias</p>
+                    <span id="k-mat" class="text-2xl font-bold text-slate-800">0</span>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div class="card lg:col-span-2"><div id="chart-time"></div></div>
+                <div class="card"><div id="chart-area"></div></div>
+                <div class="card"><div id="chart-semestre-cursado"></div></div>
+                <div class="card"><div id="chart-estatus"></div></div>
+                <div class="card"><div id="chart-tipo"></div></div>
+                <div class="card lg:col-span-2"><div id="chart-planteles-total"></div></div>
+                <div class="card lg:col-span-2"><div id="chart-top-docentes"></div></div>
+            </div>
+
+            <div class="card">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="font-bold text-slate-800 text-sm">📋 Registros Filtrados</h3>
+                    <span class="text-xs text-slate-500" id="table-count">0 registros</span>
+                </div>
+                <div class="table-container">
+                    <table id="data-table">
+                        <thead>
+                            <tr>
+                                <th>idPlantel</th>
+                                <th>plantel</th>
+                                <th>matricula</th>
+                                <th>docente</th>
+                                <th>materia</th>
+                                <th>Estatus</th>
+                                <th>semestre</th>
+                                <th>turno</th>
+                                <th>grupos</th>
+                                <th>parcial</th>
+                                <th>fec_elaboracion</th>
+                                <th>Semestre Cursado</th>
+                            </tr>
+                        </thead>
+                        <tbody id="table-body"></tbody>
+                    </table>
+                </div>
+                <div class="pagination" id="pagination">
+                    <button onclick="prevPage()" id="prevPageBtn" disabled>◀ Anterior</button>
+                    <span id="pageInfo">Página 1 de 1</span>
+                    <button onclick="nextPage()" id="nextPageBtn" disabled>Siguiente ▶</button>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        const DATA_URL = 'https://raw.githubusercontent.com/ezamarripa-creator/CapacitacionesCOBAED/main/datos.json';
+        let db = [];
+        let filtered = [];
+        let filterState = {};
+        let currentPage = 1;
+        const rowsPerPage = 100;
+        let totalPages = 1;
+
+        window.onload = fetchGitHubData;
+
+        async function fetchGitHubData() {
+            const loader = document.getElementById('loader');
+            loader.style.display = 'flex';
+            document.getElementById('loader-progress-bar').style.width = '20%';
+
+            try {
+                const response = await fetch(`${DATA_URL}?t=${new Date().getTime()}`);
+                if (!response.ok) throw new Error("No se pudo obtener el archivo desde GitHub.");
+                
+                const rawData = await response.json();
+                document.getElementById('loader-progress-bar').style.width = '60%';
+                document.getElementById('loader-subtext').innerText = 'Procesando registros...';
+
+                // Normalización de datos (igual que en tu lógica anterior)
+                db = rawData.map(d => {
+                    let o = {};
+                    for(let k in d) {
+                        let keyName = (k === 'Semestre2') ? 'Semestre Cursado' : k;
+                        o[keyName] = (typeof d[k] === 'string') ? d[k].trim().replace(/\s+/g, ' ') : d[k];
+                    }
+                    return o;
+                });
+
+                document.getElementById('loader-progress-bar').style.width = '100%';
+                init();
+                
+                setTimeout(() => loader.style.display = 'none', 500);
+            } catch (err) {
+                alert("Error al cargar datos: " + err.message);
+                loader.style.display = 'none';
+                document.getElementById('data-status').innerText = "❌ Error de conexión";
+            }
+        }
+
+        function init() {
+            document.getElementById('data-status').innerHTML = `✅ GitHub Sincronizado: ${db.length.toLocaleString()} registros.`;
+            filtered = [...db];
+            
+            const keys = ['Estatus', 'plantel', 'semestre', 'turno', 'parcial', 'Area', 'Semestre Cursado', 'Tipo'];
+            const box = document.getElementById('filters');
+            box.innerHTML = '';
+            
+            keys.forEach(k => {
+                const values = db.map(x => x[k]).filter(v => v != null && v !== '');
+                const unique = [...new Set(values)].sort();
+                
+                const div = document.createElement('div');
+                div.innerHTML = `
+                    <label class="text-[10px] font-bold text-slate-400 uppercase mb-1 block">${k}</label>
+                    <select class="filter-select" onchange="runFilter('${k}', this.value)">
+                        <option value="ALL">Ver todos</option>
+                        ${unique.map(v => `<option value="${v}">${v}</option>`).join('')}
+                    </select>`;
+                box.appendChild(div);
+            });
+            
+            render();
+            updateTable();
+            document.getElementById('exportBtn').style.display = 'inline-flex';
+        }
+
+        function runFilter(key, val) {
+            if(val === "ALL") delete filterState[key];
+            else filterState[key] = val;
+            
+            filtered = db.filter(d => {
+                return Object.keys(filterState).every(k => String(d[k] || '') === filterState[k]);
+            });
+            
+            currentPage = 1;
+            render();
+            updateTable();
+        }
+
+        function resetFilters() {
+            filterState = {};
+            document.querySelectorAll('.filter-select').forEach(s => s.value = "ALL");
+            filtered = [...db];
+            currentPage = 1;
+            render();
+            updateTable();
+        }
+
+        function render() {
+            if (!filtered.length) {
+                ['k-total', 'k-docs', 'k-plant', 'k-mat'].forEach(id => document.getElementById(id).innerText = '0');
+                return;
+            }
+
+            document.getElementById('k-total').innerText = filtered.length.toLocaleString();
+            document.getElementById('k-docs').innerText = [...new Set(filtered.map(x => x.matricula))].length.toLocaleString();
+            document.getElementById('k-plant').innerText = [...new Set(filtered.map(x => x.plantel))].length.toLocaleString();
+            document.getElementById('k-mat').innerText = [...new Set(filtered.map(x => x.materia))].length.toLocaleString();
+
+            const config = { responsive: true, displayModeBar: false };
+            const layoutBase = { height: 350, font: {family: 'Inter', size: 10}, margin: {t:40, b:60, l:50, r:10} };
+
+            // Gráficas
+            const timeMap = countBy(filtered, 'fec_elaboracion');
+            Plotly.newPlot('chart-time', [{x: Object.keys(timeMap), y: Object.values(timeMap), type: 'scatter', fill: 'tozeroy'}], {...layoutBase, title: '<b>ENTREGAS POR FECHA</b>'}, config);
+
+            const areaMap = countBy(filtered, 'Area');
+            Plotly.newPlot('chart-area', [{labels: Object.keys(areaMap), values: Object.values(areaMap), type: 'pie', hole: 0.5}], {...layoutBase, title: '<b>ÁREAS</b>'}, config);
+
+            const semCMap = countBy(filtered, 'Semestre Cursado');
+            Plotly.newPlot('chart-semestre-cursado', [{x: Object.keys(semCMap), y: Object.values(semCMap), type: 'bar', marker: {color: '#8b5cf6'}}], {...layoutBase, title: '<b>POR SEMESTRE CURSADO</b>'}, config);
+
+            const estMap = countBy(filtered, 'Estatus');
+            Plotly.newPlot('chart-estatus', [{x: Object.keys(estMap), y: Object.values(estMap), type: 'bar', marker: {color: '#10b981'}}], {...layoutBase, title: '<b>ESTATUS</b>'}, config);
+
+            const tipoMap = countBy(filtered, 'Tipo');
+            Plotly.newPlot('chart-tipo', [{labels: Object.keys(tipoMap), values: Object.values(tipoMap), type: 'pie'}], {...layoutBase, title: '<b>TIPO</b>'}, config);
+
+            const plantTotalMap = countBy(filtered, 'plantel');
+            Plotly.newPlot('chart-planteles-total', [{x: Object.keys(plantTotalMap), y: Object.values(plantTotalMap), type: 'bar'}], {...layoutBase, title: '<b>POR PLANTEL</b>'}, config);
+
+            const docMap = topN(countBy(filtered, 'docente'), 10);
+            Plotly.newPlot('chart-top-docentes', [{x: Object.values(docMap), y: Object.keys(docMap), type: 'bar', orientation: 'h'}], {...layoutBase, title: '<b>TOP 10 DOCENTES</b>', margin: {t:40, b:40, l:180, r:10}}, config);
+        }
+
+        function updateTable() {
+            const tbody = document.getElementById('table-body');
+            const countSpan = document.getElementById('table-count');
+            
+            if (!filtered.length) {
+                tbody.innerHTML = '<tr><td colspan="12" class="text-center py-4">Sin datos</td></tr>';
+                return;
+            }
+
+            countSpan.innerText = `${filtered.length.toLocaleString()} registros`;
+            totalPages = Math.ceil(filtered.length / rowsPerPage);
+            const start = (currentPage - 1) * rowsPerPage;
+            const pageData = filtered.slice(start, start + rowsPerPage);
+            
+            document.getElementById('pageInfo').innerText = `Página ${currentPage} de ${totalPages}`;
+            document.getElementById('prevPageBtn').disabled = currentPage === 1;
+            document.getElementById('nextPageBtn').disabled = currentPage === totalPages;
+
+            tbody.innerHTML = pageData.map(d => `
+                <tr>
+                    <td>${d.idPlantel || ''}</td>
+                    <td>${d.plantel || ''}</td>
+                    <td>${d.matricula || ''}</td>
+                    <td>${(d.docente || '').substring(0, 25)}</td>
+                    <td>${(d.materia || '').substring(0, 25)}</td>
+                    <td>${d.Estatus || ''}</td>
+                    <td>${d.semestre || ''}</td>
+                    <td>${d.turno || ''}</td>
+                    <td>${d.grupos || ''}</td>
+                    <td>${d.parcial || ''}</td>
+                    <td>${d.fec_elaboracion || ''}</td>
+                    <td>${d['Semestre Cursado'] || ''}</td>
+                </tr>
+            `).join('');
+        }
+
+        function prevPage() { if (currentPage > 1) { currentPage--; updateTable(); } }
+        function nextPage() { if (currentPage < totalPages) { currentPage++; updateTable(); } }
+
+        function exportToExcel() {
+            const ws = XLSX.utils.json_to_sheet(filtered);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Filtrados");
+            XLSX.writeFile(wb, `planeaciones_${new Date().toISOString().slice(0,10)}.xlsx`);
+        }
+
+        function countBy(arr, key) {
+            return arr.reduce((acc, obj) => {
+                const v = obj[key];
+                if (v) acc[v] = (acc[v] || 0) + 1;
+                return acc;
+            }, {});
+        }
+
+        function topN(obj, n) {
+            return Object.entries(obj).sort((a,b) => b[1]-a[1]).slice(0, n).reduce((acc, [k,v]) => ({...acc, [k]:v}), {});
+        }
+    </script>
+</body>
+</html>
