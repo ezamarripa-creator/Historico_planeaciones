@@ -37,8 +37,42 @@
     })();
     </script>
 
-    
-    
+
+    <script>
+    (function() {
+        document.addEventListener('contextmenu', function(e) {
+            e.preventDefault();
+            return false;
+        });
+      
+       document.addEventListener('keydown', function(e) {
+            const key = e.key.toLowerCase();
+            if ((e.ctrlKey && (key === 'u' || key === 's' || key === 'c' || key === 'i' || key === 'j')) ||
+                (e.ctrlKey && e.shiftKey && (key === 'i' || key === 'j' || key === 'c')) ||
+                e.key === 'F12') {
+                e.preventDefault();
+                return false;
+            }
+        });
+        
+        let devtoolsTriggered = false;
+        setInterval(function() {
+            if (devtoolsTriggered) return;
+            const before = new Date();
+            debugger; 
+            const after = new Date();
+            if (after - before > 100) { 
+                devtoolsTriggered = true;
+                document.body.innerHTML = '<div style="text-align:center; padding:50px; font-family:sans-serif;"><h1 style="color:#042C53;">⚠️ Acceso no autorizado</h1><p>El uso de herramientas de desarrollo no está permitido en este recurso institucional.</p><p style="font-size:14px; margin-top:30px;">🔒 COBAED · Dirección Académica</p></div>';
+            }
+        }, 2000);
+        
+        const style = document.createElement('style');
+        style.textContent = `body { user-select: none; -webkit-user-select: none; -moz-user-select: none; -ms-user-select: none; }`;
+        document.head.appendChild(style);
+    })();
+    </script>
+
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dashboard Académico | Historico</title>
@@ -67,11 +101,11 @@
 
     <div id="loader">
         <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
-        <p id="loader-text" class="font-bold text-slate-700 text-lg">Cargando datos desde GitHub...</p>
+        <p id="loader-text" class="font-bold text-slate-700 text-lg">Conectando con Google Drive...</p>
         <div id="loader-progress">
             <div id="loader-progress-bar"></div>
         </div>
-        <p id="loader-subtext" class="text-slate-500 text-xs mt-2">Sincronizando archivo datos.json (14MB)...</p>
+        <p id="loader-subtext" class="text-slate-500 text-xs mt-2">Sincronizando base de datos institucional...</p>
     </div>
 
     <nav class="bg-slate-900 text-white p-4 sticky top-0 z-50 shadow-lg">
@@ -80,11 +114,11 @@
                 <div class="bg-blue-600 p-2 rounded-lg text-xl">🏛️</div>
                 <div>
                     <h1 class="font-bold text-lg leading-none">Sistema Historico de Planeaciones</h1>
-                    <p id="data-status" class="text-blue-400 text-xs mt-1">Buscando datos.json...</p>
+                    <p id="data-status" class="text-blue-400 text-xs mt-1">Vinculado a Google Drive</p>
                 </div>
             </div>
             <button onclick="exportToExcel()" class="bg-emerald-600 hover:bg-emerald-500 px-4 py-2 rounded-md font-bold text-sm transition" id="exportBtn" style="display: none;">
-                ⬇️ Exportar Excel
+                ⬇️ Exportar Reporte
             </button>
         </div>
     </nav>
@@ -166,27 +200,37 @@
         let currentPage = 1;
         const rowsPerPage = 50;
 
-        // CARGA AUTOMÁTICA AL INICIAR
+        // ID DEL ARCHIVO PROPORCIONADO
+        const FILE_ID = '1sUn-ztr0yCDTKz7JhfRW9JcvkSukeV2f';
+        // URL de exportación directa a Excel
+        const DRIVE_URL = `https://docs.google.com/spreadsheets/d/${FILE_ID}/export?format=xlsx`;
+
         window.addEventListener('DOMContentLoaded', async () => {
             const bar = document.getElementById('loader-progress-bar');
             try {
                 bar.style.width = '20%';
-                // Petición al archivo que está en el mismo nivel que el HTML
-                const response = await fetch('datos.json');
                 
-                if (!response.ok) throw new Error('No se encontró datos.json en el servidor.');
+                const response = await fetch(DRIVE_URL);
+                if (!response.ok) throw new Error('No se pudo acceder al archivo de Drive. Verifique que el archivo sea público (Cualquier persona con el enlace).');
 
                 bar.style.width = '50%';
-                const data = await response.json();
+                const arrayBuffer = await response.arrayBuffer();
                 
-                bar.style.width = '80%';
-                // Limpieza básica de datos
+                bar.style.width = '70%';
+                const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+                const firstSheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[firstSheetName];
+                const data = XLSX.utils.sheet_to_json(worksheet);
+
+                bar.style.width = '90%';
                 db = data.map(d => {
                     let o = {...d};
-                    // Aseguramos que Semestre Cursado se lea correctamente si viene de Semestre2 u otras fuentes
-                    o["Semestre Cursado"] = d["Semestre Cursado"] || d["Semestre2"] || "N/A";
+                    // Normalización de columnas basada en los requisitos anteriores
+                    o["Semestre Cursado"] = d["Semestre Cursado"] || d["Semestre2"] || d["Semestre"] || "N/A";
                     return o;
                 });
+
+                if (db.length === 0) throw new Error('El archivo de Drive no contiene datos procesables.');
 
                 init();
                 bar.style.width = '100%';
@@ -194,29 +238,33 @@
 
             } catch (err) {
                 console.error(err);
-                document.getElementById('loader-text').innerText = "Error de Datos";
-                document.getElementById('loader-subtext').innerHTML = `<span class="text-red-500">${err.message}</span><br>Asegúrate de que 'datos.json' esté subido a GitHub en la misma carpeta.`;
+                document.getElementById('loader-text').innerText = "Error de Conexión";
+                document.getElementById('loader-subtext').innerHTML = `
+                    <span class="text-red-500 font-bold">${err.message}</span><br>
+                    1. Verifique que el archivo en Drive esté compartido como "Público".<br>
+                    2. Si el archivo es muy grande, intente recargar la página.`;
             }
         });
 
         function init() {
-            document.getElementById('data-status').innerText = `✅ ${db.length.toLocaleString()} registros sincronizados.`;
+            document.getElementById('data-status').innerText = `✅ ${db.length.toLocaleString()} registros sincronizados desde Drive.`;
             filtered = [...db];
             
-            // Generar filtros dinámicos basados en la estructura del JSON entregado
             const filterKeys = ['Estatus', 'plantel', 'turno', 'parcial', 'Area', 'Semestre Cursado'];
             const container = document.getElementById('filters');
             
             filterKeys.forEach(k => {
                 const vals = [...new Set(db.map(x => x[k]).filter(Boolean))].sort();
-                const div = document.createElement('div');
-                div.innerHTML = `
-                    <label class="text-[10px] font-bold text-slate-400 uppercase block mb-1">${k}</label>
-                    <select class="filter-select" onchange="applyFilter('${k}', this.value)">
-                        <option value="ALL">Todos</option>
-                        ${vals.map(v => `<option value="${v}">${v}</option>`).join('')}
-                    </select>`;
-                container.appendChild(div);
+                if(vals.length > 0) {
+                    const div = document.createElement('div');
+                    div.innerHTML = `
+                        <label class="text-[10px] font-bold text-slate-400 uppercase block mb-1">${k}</label>
+                        <select class="filter-select" onchange="applyFilter('${k}', this.value)">
+                            <option value="ALL">Todos</option>
+                            ${vals.map(v => `<option value="${v}">${v}</option>`).join('')}
+                        </select>`;
+                    container.appendChild(div);
+                }
             });
 
             renderCharts();
@@ -245,40 +293,35 @@
 
         function renderCharts() {
             document.getElementById('k-total').innerText = filtered.length.toLocaleString();
-            document.getElementById('k-docs').innerText = [...new Set(filtered.map(x => x.matricula))].length.toLocaleString();
+            document.getElementById('k-docs').innerText = [...new Set(filtered.map(x => x.matricula || x.docente))].length.toLocaleString();
             document.getElementById('k-plant').innerText = [...new Set(filtered.map(x => x.plantel))].length.toLocaleString();
             document.getElementById('k-mat').innerText = [...new Set(filtered.map(x => x.materia))].length.toLocaleString();
 
             const config = { responsive: true, displayModeBar: false };
             const baseLayout = { height: 350, font: {family: 'Inter', size: 10}, margin: {t:30, b:40, l:40, r:10} };
 
-            // Línea de tiempo
             const timeData = countBy(filtered, 'fec_elaboracion');
             Plotly.newPlot('chart-time', [{
                 x: Object.keys(timeData), y: Object.values(timeData),
                 type: 'scatter', mode: 'lines', fill: 'tozeroy', line: {color: '#2563eb'}
             }], {...baseLayout, title: '<b>ENTREGAS POR FECHA</b>'}, config);
 
-            // Dona de Áreas
             const areaData = countBy(filtered, 'Area');
             Plotly.newPlot('chart-area', [{
                 labels: Object.keys(areaData), values: Object.values(areaData),
                 type: 'pie', hole: 0.4
             }], {...baseLayout, title: '<b>POR ÁREA</b>'}, config);
 
-            // Bar Estatus
             const estData = countBy(filtered, 'Estatus');
             Plotly.newPlot('chart-estatus', [{
                 x: Object.keys(estData), y: Object.values(estData), type: 'bar', marker: {color: '#10b981'}
             }], {...baseLayout, title: '<b>ESTATUS</b>'}, config);
 
-            // Bar Planteles
             const pData = countBy(filtered, 'plantel');
             Plotly.newPlot('chart-planteles-total', [{
                 x: Object.keys(pData), y: Object.values(pData), type: 'bar', marker: {color: '#6366f1'}
             }], {...baseLayout, title: '<b>REGISTROS POR PLANTEL</b>'}, config);
 
-            // Top Docentes (Horizontal)
             const dCounts = countBy(filtered, 'docente');
             const topDocs = Object.entries(dCounts).sort((a,b) => b[1]-a[1]).slice(0, 10);
             Plotly.newPlot('chart-top-docentes', [{
@@ -299,8 +342,8 @@
                 <tr>
                     <td>${d.plantel || ''}</td>
                     <td>${d.matricula || ''}</td>
-                    <td title="${d.docente}">${(d.docente || '').substring(0,20)}...</td>
-                    <td title="${d.materia}">${(d.materia || '').substring(0,20)}...</td>
+                    <td title="${d.docente}">${String(d.docente || '').substring(0,20)}...</td>
+                    <td title="${d.materia}">${String(d.materia || '').substring(0,20)}...</td>
                     <td>${d.Estatus || ''}</td>
                     <td>${d.parcial || ''}</td>
                     <td>${d.fec_elaboracion || ''}</td>
@@ -326,8 +369,8 @@
         function exportToExcel() {
             const ws = XLSX.utils.json_to_sheet(filtered);
             const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws, "Reporte");
-            XLSX.writeFile(wb, "Dashboard_Planeaciones.xlsx");
+            XLSX.utils.book_append_sheet(wb, ws, "Reporte_Filtrado");
+            XLSX.writeFile(wb, "Reporte_Institucional.xlsx");
         }
     </script>
 </body>
