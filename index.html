@@ -1,43 +1,6 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-
-    <script>
-    (function() {
-        document.addEventListener('contextmenu', function(e) {
-            e.preventDefault();
-            return false;
-        });
-      
-       document.addEventListener('keydown', function(e) {
-            const key = e.key.toLowerCase();
-            if ((e.ctrlKey && (key === 'u' || key === 's' || key === 'c' || key === 'i' || key === 'j')) ||
-                (e.ctrlKey && e.shiftKey && (key === 'i' || key === 'j' || key === 'c')) ||
-                e.key === 'F12') {
-                e.preventDefault();
-                return false;
-            }
-        });
-        
-        let devtoolsTriggered = false;
-        setInterval(function() {
-            if (devtoolsTriggered) return;
-            const before = new Date();
-            debugger; 
-            const after = new Date();
-            if (after - before > 100) { 
-                devtoolsTriggered = true;
-                document.body.innerHTML = '<div style="text-align:center; padding:50px; font-family:sans-serif;"><h1 style="color:#042C53;">⚠️ Acceso no autorizado</h1><p>El uso de herramientas de desarrollo no está permitido en este recurso institucional.</p><p style="font-size:14px; margin-top:30px;">🔒 COBAED · Dirección Académica</p></div>';
-            }
-        }, 2000);
-        
-        const style = document.createElement('style');
-        style.textContent = `body { user-select: none; -webkit-user-select: none; -moz-user-select: none; -ms-user-select: none; }`;
-        document.head.appendChild(style);
-    })();
-    </script>
-
-
     <script>
     (function() {
         document.addEventListener('contextmenu', function(e) {
@@ -200,9 +163,7 @@
         let currentPage = 1;
         const rowsPerPage = 50;
 
-        // ID DEL ARCHIVO PROPORCIONADO
         const FILE_ID = '1sUn-ztr0yCDTKz7JhfRW9JcvkSukeV2f';
-        // URL de exportación directa a Excel
         const DRIVE_URL = `https://docs.google.com/spreadsheets/d/${FILE_ID}/export?format=xlsx`;
 
         window.addEventListener('DOMContentLoaded', async () => {
@@ -211,13 +172,13 @@
                 bar.style.width = '20%';
                 
                 const response = await fetch(DRIVE_URL);
-                if (!response.ok) throw new Error('No se pudo acceder al archivo de Drive. Verifique que el archivo sea público (Cualquier persona con el enlace).');
+                if (!response.ok) throw new Error('No se pudo acceder al archivo de Drive.');
 
                 bar.style.width = '50%';
                 const arrayBuffer = await response.arrayBuffer();
                 
                 bar.style.width = '70%';
-                const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+                const workbook = XLSX.read(arrayBuffer, { type: 'array', cellDates: true });
                 const firstSheetName = workbook.SheetNames[0];
                 const worksheet = workbook.Sheets[firstSheetName];
                 const data = XLSX.utils.sheet_to_json(worksheet);
@@ -225,12 +186,11 @@
                 bar.style.width = '90%';
                 db = data.map(d => {
                     let o = {...d};
-                    // Normalización de columnas basada en los requisitos anteriores
                     o["Semestre Cursado"] = d["Semestre Cursado"] || d["Semestre2"] || d["Semestre"] || "N/A";
                     return o;
                 });
 
-                if (db.length === 0) throw new Error('El archivo de Drive no contiene datos procesables.');
+                if (db.length === 0) throw new Error('El archivo no contiene datos.');
 
                 init();
                 bar.style.width = '100%';
@@ -239,15 +199,36 @@
             } catch (err) {
                 console.error(err);
                 document.getElementById('loader-text').innerText = "Error de Conexión";
-                document.getElementById('loader-subtext').innerHTML = `
-                    <span class="text-red-500 font-bold">${err.message}</span><br>
-                    1. Verifique que el archivo en Drive esté compartido como "Público".<br>
-                    2. Si el archivo es muy grande, intente recargar la página.`;
+                document.getElementById('loader-subtext').innerHTML = `<span class="text-red-500 font-bold">${err.message}</span>`;
             }
         });
 
+        // Función para dar formato a la fecha (DD/MM/YYYY)
+        function formatDate(val) {
+            if (!val) return '';
+            let date;
+            
+            // Si es un objeto Date de JS
+            if (val instanceof Date) {
+                date = val;
+            } else if (!isNaN(val) && typeof val === 'number') {
+                // Si es un número de serie de Excel
+                date = new Date((val - 25569) * 86400 * 1000);
+            } else {
+                // Si es un string, intentar parsear
+                date = new Date(val);
+            }
+
+            if (isNaN(date.getTime())) return val; // Devolver original si falla el parseo
+
+            const day = String(date.getDate()).padStart(2, '0');
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const year = date.getFullYear();
+            return `${day}/${month}/${year}`;
+        }
+
         function init() {
-            document.getElementById('data-status').innerText = `✅ ${db.length.toLocaleString()} registros sincronizados desde Drive.`;
+            document.getElementById('data-status').innerText = `✅ ${db.length.toLocaleString()} registros sincronizados.`;
             filtered = [...db];
             
             const filterKeys = ['Estatus', 'plantel', 'turno', 'parcial', 'Area', 'Semestre Cursado'];
@@ -275,7 +256,6 @@
         function applyFilter(key, val) {
             if(val === "ALL") delete filterState[key];
             else filterState[key] = val;
-            
             filtered = db.filter(d => Object.keys(filterState).every(k => String(d[k]) === filterState[k]));
             currentPage = 1;
             renderCharts();
@@ -346,7 +326,7 @@
                     <td title="${d.materia}">${String(d.materia || '').substring(0,20)}...</td>
                     <td>${d.Estatus || ''}</td>
                     <td>${d.parcial || ''}</td>
-                    <td>${d.fec_elaboracion || ''}</td>
+                    <td>${formatDate(d.fec_elaboracion)}</td>
                     <td>${d["Semestre Cursado"] || ''}</td>
                 </tr>
             `).join('');
